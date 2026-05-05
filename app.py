@@ -43,6 +43,11 @@ st.set_page_config(
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",
+    menu_items={
+        "Get Help": None,
+        "Report a bug": None,
+        "About": None,
+    },
 )
 
 DOCS_DIR = Path(__file__).parent / "docs"
@@ -66,6 +71,19 @@ CUSTOM_CSS = """
 html, body, [class*="css"], .stMarkdown, button, input, select, textarea {
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif !important;
 }
+
+/* === 친구 공유용: streamlit 기본 UI 숨김 === */
+#MainMenu { visibility: hidden !important; }                       /* 우상단 햄버거 메뉴 */
+header { visibility: hidden !important; height: 0 !important; }    /* 상단 헤더 영역 */
+footer { visibility: hidden !important; }                          /* 하단 footer */
+[data-testid="stToolbar"] { display: none !important; }            /* 툴바 */
+[data-testid="stDecoration"] { display: none !important; }
+[data-testid="stStatusWidget"] { display: none !important; }
+[data-testid="stAppDeployButton"] { display: none !important; }
+.stDeployButton { display: none !important; }
+.viewerBadge_link__qRIco { display: none !important; }             /* "Hosted with Streamlit" 배지 */
+.styles_terminalButton__JBj5T { display: none !important; }
+[data-testid="stStyledFullScreenButton"] { display: none !important; }
 
 /* 사이드바 완전 숨김 (상단 탭만 사용) */
 [data-testid="stSidebar"] { display: none !important; }
