@@ -17,7 +17,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.macro import COMMODITIES, CURRENCIES, INDICES, load_series, market_sentiment, summary_table
+from src.macro import (
+    COMMODITIES, CURRENCIES, INDICES,
+    category_market_fit, fetch_market_state, load_series, market_sentiment, summary_table,
+)
 from src.news import fetch_economic_headlines
 
 
@@ -308,8 +311,11 @@ def render_kpi_dashboard(date: str) -> None:
     avg_per = a["PER"].mean() if not a.empty and "PER" in a.columns else None
     avg_roe = a["ROE"].mean() if not a.empty and "ROE" in a.columns else None
 
+    label, _, _ = _market_state_cached()
+
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("📅 기준일", date)
+    c1.metric("🌡️ 시장 분위기", label.replace("🟢", "").replace("🟡", "").replace("🟠", "").replace("🔴", "").strip(),
+              delta=label.split()[0] if label else None)
     c2.metric("⭐ 단기 후보", f"{f_count}종목")
     c3.metric("🏭 섹터 수", f"{sector_count}개")
     c4.metric(
@@ -392,6 +398,36 @@ def page_categories(date: str) -> None:
         label_visibility="collapsed", key="cat_radio",
     )
     sel_key = cat_keys[cat_titles.index(sel_title)]
+
+    # 시장 분위기 + 카테고리 적합도 배지
+    market_label, market_reasons, market_score = _market_state_cached()
+    fit_badge, fit_reason = category_market_fit(market_score, sel_key)
+
+    fit_color = "#10B981" if "◎" in fit_badge else (
+        "#06B6D4" if "○" in fit_badge else (
+            "#FBBF24" if "△" in fit_badge else "#EF4444"
+        )
+    )
+
+    st.markdown(
+        f'<div style="display:flex; gap:12px; flex-wrap:wrap; margin: 0 0 16px 0">'
+        f'<div style="flex:1; min-width:280px; padding:14px 18px; border-radius:12px; '
+        f'background:linear-gradient(135deg, rgba(168,85,247,0.10), rgba(26,27,46,0.6)); '
+        f'border:1px solid rgba(168,85,247,0.25)">'
+        f'<div style="font-size:0.78rem; color:#9CA3AF">현재 시장 분위기</div>'
+        f'<div style="font-size:1.25rem; font-weight:700; color:#F3F4F6; margin-top:2px">{market_label}</div>'
+        f'<div style="font-size:0.78rem; color:#9CA3AF; margin-top:4px">{market_reasons}</div>'
+        f'</div>'
+        f'<div style="flex:1; min-width:280px; padding:14px 18px; border-radius:12px; '
+        f'background:linear-gradient(135deg, rgba(6,182,212,0.10), rgba(26,27,46,0.6)); '
+        f'border:1px solid rgba(6,182,212,0.25)">'
+        f'<div style="font-size:0.78rem; color:#9CA3AF">{sel_title} 적합도 (시장 분위기 반영)</div>'
+        f'<div style="font-size:1.25rem; font-weight:700; color:{fit_color}; margin-top:2px">{fit_badge}</div>'
+        f'<div style="font-size:0.78rem; color:#9CA3AF; margin-top:4px">{fit_reason}</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     df = load_csv(date, sel_key)
     if df.empty:
@@ -651,6 +687,15 @@ def _series_cached(symbol: str, days: int) -> pd.DataFrame:
 @st.cache_data(ttl=300)
 def _news_cached() -> pd.DataFrame:
     return fetch_economic_headlines(30)
+
+
+@st.cache_data(ttl=600)
+def _market_state_cached() -> tuple[str, str, int]:
+    """시장 분위기 (라벨, 이유, 점수). 10분 캐시."""
+    try:
+        return fetch_market_state()
+    except Exception as e:
+        return ("🟡 데이터 부족", str(e)[:80], 0)
 
 
 def page_global() -> None:

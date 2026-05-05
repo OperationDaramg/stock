@@ -110,3 +110,96 @@ def market_sentiment(
         label = "🔴 약세장 (Risk-Off)"
 
     return label, " · ".join(reasons), score
+
+
+def sentiment_bucket(score: int) -> str:
+    """점수 → 5단계 분위기 키."""
+    if score >= 4:
+        return "strong_bull"
+    if score >= 1:
+        return "bull"
+    if score >= -1:
+        return "neutral"
+    if score >= -3:
+        return "bear"
+    return "strong_bear"
+
+
+# 카테고리 × 시장분위기 → (적합도 배지, 이유)
+_FIT_TABLE: dict[tuple[str, str], tuple[str, str]] = {
+    # A 저평가 가치주 — 시장 무관 안정, 약세에서 더 빛남
+    ("A", "strong_bull"): ("○ 무난", "강세장은 성장주 선호 경향"),
+    ("A", "bull"): ("○ 무난", "가치주는 추세 영향 적음"),
+    ("A", "neutral"): ("○ 적합", "중립장에서 안정적 후보"),
+    ("A", "bear"): ("◎ 매우 적합", "약세장 방어 자산으로 선호"),
+    ("A", "strong_bear"): ("◎ 매우 적합", "약세장에서 가치 회복 기대"),
+
+    # B 고배당주 — 약세에서 현금흐름 매력 ↑
+    ("B", "strong_bull"): ("△ 평이", "강세장은 성장주 선호"),
+    ("B", "bull"): ("○ 무난", "안정 수익 추구"),
+    ("B", "neutral"): ("○ 적합", "배당이 안정성 기여"),
+    ("B", "bear"): ("◎ 매우 적합", "배당이 손실 완충"),
+    ("B", "strong_bear"): ("◎ 매우 적합", "현금흐름 가치 부각"),
+
+    # C 대형 우량주 — 모든 환경에서 무난
+    ("C", "strong_bull"): ("○ 무난", "대형주는 시장 추종"),
+    ("C", "bull"): ("○ 무난", "대형주 안정"),
+    ("C", "neutral"): ("○ 적합", "중립장 선호"),
+    ("C", "bear"): ("○ 적합", "약세장 방어"),
+    ("C", "strong_bear"): ("○ 적합", "약세장 방어"),
+
+    # D 모멘텀 — 강세장 친화, 약세장 위험
+    ("D", "strong_bull"): ("◎ 매우 적합", "강세장은 모멘텀의 시기"),
+    ("D", "bull"): ("◎ 매우 적합", "추세 추종에 우호적"),
+    ("D", "neutral"): ("○ 무난", "중립장에서는 신중히"),
+    ("D", "bear"): ("△ 주의", "약세장에서 거짓 신호 위험"),
+    ("D", "strong_bear"): ("⚠ 비권장", "약세장 모멘텀은 함정 가능"),
+
+    # E 과매도 반등 — 약세장에서는 추세적 하락 가능
+    ("E", "strong_bull"): ("△ 평이", "강세장 RSI<30은 일시적"),
+    ("E", "bull"): ("○ 무난", "단기 반등 기대"),
+    ("E", "neutral"): ("○ 적합", "기술적 반등 가능 구간"),
+    ("E", "bear"): ("△ 주의", "약세장에서 추세 하락 위험"),
+    ("E", "strong_bear"): ("⚠ 비권장", "약세장 RSI<30은 추세적 하락 신호일 수 있음"),
+
+    # F 단기 관심 — 강세장 친화, 약세장 위험
+    ("F", "strong_bull"): ("◎ 매우 적합", "강세장 단기 트레이딩 최적"),
+    ("F", "bull"): ("◎ 매우 적합", "우호적 환경"),
+    ("F", "neutral"): ("○ 무난", "중립장에서는 신중히"),
+    ("F", "bear"): ("△ 주의", "약세장 추세 반전 위험"),
+    ("F", "strong_bear"): ("⚠ 비권장", "약세장 단기 매매는 위험"),
+}
+
+
+def category_market_fit(score: int, category_key: str) -> tuple[str, str]:
+    """시장 점수에 따른 카테고리 적합도.
+
+    Args:
+        score: market_sentiment의 점수 (-6 ~ +6)
+        category_key: 'A_가치주', 'B_배당주', ..., 'F_단기관심'
+
+    Returns:
+        (배지, 이유). 예: ('◎ 매우 적합', '강세장은 모멘텀의 시기')
+    """
+    cat = category_key[:1]  # A/B/C/D/E/F
+    bucket = sentiment_bucket(score)
+    return _FIT_TABLE.get((cat, bucket), ("○ 무난", ""))
+
+
+def fetch_market_state() -> tuple[str, str, int]:
+    """시장 분위기 라벨/이유/점수를 한 번에 계산. 캐시는 호출자 측에서."""
+    indices = summary_table(INDICES, days=60)
+    vix_level = None
+    kospi_20d = None
+    sp500_20d = None
+    if not indices.empty:
+        for _, r in indices.iterrows():
+            if r["심볼"] == "VIX":
+                vix_level = float(r["현재값"])
+            if r["심볼"] == "KS11" and "20일(%)" in indices.columns:
+                v = r.get("20일(%)")
+                kospi_20d = float(v) if v is not None and not pd.isna(v) else None
+            if r["심볼"] == "US500" and "20일(%)" in indices.columns:
+                v = r.get("20일(%)")
+                sp500_20d = float(v) if v is not None and not pd.isna(v) else None
+    return market_sentiment(vix_level, kospi_20d, sp500_20d)
