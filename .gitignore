@@ -8,6 +8,7 @@
 !*.py
 !*.md
 !requirements.txt
+!runtime.txt
 !.gitignore
 !.streamlit/config.toml
 !.github/workflows/*.yml
