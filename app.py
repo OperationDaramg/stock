@@ -17,6 +17,13 @@ _APP_DIR = Path(__file__).resolve().parent
 if str(_APP_DIR) not in sys.path:
     sys.path.insert(0, str(_APP_DIR))
 
+# 로컬 PowerShell 한글 출력용. streamlit cloud의 stdout 캡처와 충돌 방지를 위해 try
+try:
+    sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
+    sys.stderr.reconfigure(encoding="utf-8")
+except (AttributeError, OSError, ValueError):
+    pass
+
 import FinanceDataReader as fdr
 import pandas as pd
 import plotly.express as px
@@ -1320,5 +1327,5 @@ def main() -> None:
         page_global()
 
 
-if __name__ == "__main__":
-    main()
+# streamlit은 app.py 자체를 실행하므로 가드 없이 main() 호출
+main()
