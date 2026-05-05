@@ -8,8 +8,14 @@
     streamlit run app.py
 """
 
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# Streamlit Cloud 등에서 src/ 모듈을 안전하게 찾도록 sys.path 보정
+_APP_DIR = Path(__file__).resolve().parent
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 
 import FinanceDataReader as fdr
 import pandas as pd
