@@ -10,3 +10,8 @@
 !requirements.txt
 !.gitignore
 !.streamlit/config.toml
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
+# Streamlit Cloud 배포를 위해 docs 결과 파일도 git 추적 (GitHub Actions가 자동 갱신)
+!docs/**/*.csv
+!docs/**/*.txt

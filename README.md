@@ -129,6 +129,39 @@ python backtest_runner.py
 | `REBALANCE_DAYS` | 5 | 신호 체크 주기 (1주) |
 | `UNIVERSE_SIZE` | 100 | 백테스팅 대상 — 시총 상위 N개 |
 
+## ☁️ 배포 (Streamlit Community Cloud)
+
+### 자동 데이터 갱신 (GitHub Actions)
+
+`.github/workflows/daily_update.yml`이 다음 일정에 자동 실행됩니다:
+
+| 일정 | 작업 | 시간 |
+|---|---|---|
+| 평일 (월~금) | 스크리너 실행 → docs 자동 push | KST 17:30 (장 마감 30분 후) |
+| 일요일 | 스크리너 + 백테스팅 모두 실행 | KST 09:00 |
+| 수동 | Actions 탭에서 "Run workflow" 클릭 | 언제든 |
+
+GitHub의 "Settings → Actions → General → Workflow permissions"에서 **"Read and write permissions"**를 활성화해야 자동 push가 가능합니다.
+
+### Streamlit Community Cloud 배포
+
+1. https://share.streamlit.io 접속 → **GitHub로 로그인**
+2. **New app** 클릭
+3. 다음 정보 입력:
+   - Repository: `OperationDaramg/stock`
+   - Branch: `main`
+   - Main file path: `app.py`
+   - App URL: `kospi-screener` 등 원하는 서브도메인
+4. **Deploy** 클릭 → 약 2~3분 후 `https://kospi-screener.streamlit.app` 같은 URL 발급
+5. 이후 `git push` 할 때마다 자동 재배포됨
+
+### (선택) 커스텀 도메인 + Cloudflare CDN
+
+본인 도메인(`example.com`)이 있다면:
+- Streamlit Cloud의 앱 설정에서 커스텀 도메인 등록
+- Cloudflare DNS에 CNAME 레코드 추가 (`stock.example.com` → `xxx.streamlit.app`)
+- Cloudflare가 캐싱/SSL 처리
+
 ## 라이선스 / 면책
 
 본 코드는 학습/개인 활용 목적으로 작성되었으며, **투자 자문이나 매매 추천이 아닙니다.** 사용으로 인한 손실에 대해 어떠한 책임도 지지 않습니다.
