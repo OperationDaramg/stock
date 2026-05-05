@@ -9,6 +9,7 @@
 !*.md
 !requirements.txt
 !runtime.txt
+!render.yaml
 !.gitignore
 !.streamlit/config.toml
 !.github/workflows/*.yml
