@@ -22,6 +22,7 @@ from src.macro import (
     category_market_fit, fetch_market_state, load_series, market_sentiment, summary_table,
 )
 from src.news import fetch_economic_headlines
+from src.recommend import cross_category_recommendations
 
 
 st.set_page_config(
@@ -384,6 +385,103 @@ def render_category_chart(key: str, df: pd.DataFrame) -> None:
         font_color="#E5E7EB", height=480, margin=dict(l=10, r=10, t=60, b=10),
     )
     st.plotly_chart(fig, use_container_width=True)
+
+
+# ===== 페이지: 시장 기반 종합 추천 =====
+
+def page_recommend(date: str) -> None:
+    section_header("시장 기반 종합 후보", "🎯")
+
+    market_label, market_reasons, market_score = _market_state_cached()
+
+    # 상단: 시장 분위기 + 가중치 안내 카드
+    st.markdown(
+        f'<div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px">'
+        f'<div style="flex:1; min-width:280px; padding:14px 18px; border-radius:12px; '
+        f'background:linear-gradient(135deg, rgba(168,85,247,0.10), rgba(26,27,46,0.6)); '
+        f'border:1px solid rgba(168,85,247,0.25)">'
+        f'<div style="font-size:0.78rem; color:#9CA3AF">현재 시장 분위기</div>'
+        f'<div style="font-size:1.3rem; font-weight:700; color:#F3F4F6; margin-top:4px">{market_label}</div>'
+        f'<div style="font-size:0.78rem; color:#9CA3AF; margin-top:6px">{market_reasons}</div>'
+        f'</div>'
+        f'<div style="flex:1; min-width:280px; padding:14px 18px; border-radius:12px; '
+        f'background:linear-gradient(135deg, rgba(6,182,212,0.10), rgba(26,27,46,0.6)); '
+        f'border:1px solid rgba(6,182,212,0.25)">'
+        f'<div style="font-size:0.78rem; color:#9CA3AF">점수 산출 방식</div>'
+        f'<div style="font-size:0.95rem; color:#E5E7EB; margin-top:4px; line-height:1.5">'
+        f'카테고리 내 순위 백분위 × 시장 가중치<br>'
+        f'<span style="color:#10B981">◎ ×1.5</span> · '
+        f'<span style="color:#06B6D4">○ ×1.0</span> · '
+        f'<span style="color:#FBBF24">△ ×0.6</span> · '
+        f'<span style="color:#EF4444">⚠ ×0.2</span>'
+        f'</div></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    top_n = st.slider("추천 종목 수", 5, 30, 15, step=5, key="rec_top_n")
+    df = cross_category_recommendations(DOCS_DIR, date, market_score, top_n=top_n)
+
+    if df.empty:
+        st.info("추천 데이터가 없습니다. 카테고리 결과가 비어 있는지 확인하세요.")
+        return
+
+    # 표시용 컬럼만 (이유는 hover로)
+    display_df = df.drop(columns=["_적합도이유"], errors="ignore")
+    st.dataframe(display_df, use_container_width=True, height=560)
+
+    # 카테고리 분포 차트
+    cat_counts = df["카테고리"].value_counts().reset_index()
+    cat_counts.columns = ["카테고리", "종목수"]
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        fig = px.bar(
+            cat_counts, x="카테고리", y="종목수",
+            title=f"<b>Top {top_n} 카테고리 분포</b>",
+            color="종목수", color_continuous_scale="Plasma",
+            template=PLOTLY_TEMPLATE,
+        )
+        fig.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            font_color="#E5E7EB", height=380, margin=dict(l=10, r=10, t=50, b=10),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        sec_counts = df["섹터"].value_counts().head(8).reset_index()
+        sec_counts.columns = ["섹터", "종목수"]
+        fig2 = px.pie(
+            sec_counts, values="종목수", names="섹터",
+            title="<b>섹터 분포 (Top 8)</b>", hole=0.4,
+            color_discrete_sequence=px.colors.sequential.Plasma_r,
+            template=PLOTLY_TEMPLATE,
+        )
+        fig2.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            font_color="#E5E7EB", height=380, margin=dict(l=10, r=10, t=50, b=10),
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+    # 다운로드
+    st.download_button(
+        "📥 종합 후보 CSV 다운로드",
+        data=display_df.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"추천_{date}.csv",
+        mime="text/csv",
+        key="dl_rec",
+    )
+
+    # 면책
+    st.markdown(
+        '<div style="margin-top:14px; padding:14px 18px; border-radius:10px; '
+        'background:rgba(239,68,68,0.08); border-left:3px solid #EF4444; color:#FCA5A5">'
+        '<b>⚠️ 면책</b>: 본 종합 후보는 단순 알고리즘 결과 (카테고리 내 순위 × 시장 가중치)이며 '
+        '<b>투자 추천이 아닙니다</b>. 시장 분위기 판정도 룰 기반 단순 모델로 한계가 있습니다. '
+        '매수/매도 결정은 본인의 추가 분석과 책임 하에 진행하세요.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ===== 페이지: 카테고리 결과 =====
@@ -1184,28 +1282,31 @@ def main() -> None:
     render_kpi_dashboard(selected_date)
     st.markdown("")
 
-    # 상단 메인 탭 6개 (페이지 네비게이션)
+    # 상단 메인 탭 7개 — 추천을 첫 탭, 글로벌 동향을 맨 뒤(가이드 옆)로 배치
     tabs = st.tabs([
+        "🎯 추천",
         "📊 카테고리 결과",
         "🏭 섹터 분석",
-        "🌍 글로벌 동향",
         "🔍 종목 상세 차트",
         "🔬 백테스팅 결과",
         "📖 가이드",
+        "🌍 글로벌 동향",
     ])
 
     with tabs[0]:
-        page_categories(selected_date)
+        page_recommend(selected_date)
     with tabs[1]:
-        page_sectors(selected_date)
+        page_categories(selected_date)
     with tabs[2]:
-        page_global()
+        page_sectors(selected_date)
     with tabs[3]:
         page_stock_detail(selected_date)
     with tabs[4]:
         page_backtest(selected_date)
     with tabs[5]:
         page_guide()
+    with tabs[6]:
+        page_global()
 
 
 if __name__ == "__main__":
