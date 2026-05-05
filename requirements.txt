@@ -1,7 +1,8 @@
-pandas>=2.0.0
+pandas>=2.0.0,<3.0
+numpy>=1.24,<2.5
 finance-datareader>=0.9.50
 beautifulsoup4>=4.12.0
-lxml>=4.9.0
+lxml>=4.9.0,<6.0
 requests>=2.31.0
-streamlit>=1.30.0
+streamlit>=1.30.0,<2.0
 plotly>=5.18.0
