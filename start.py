@@ -71,9 +71,12 @@ def main() -> int:
     print("(중지하려면 Ctrl+C)\n")
 
     try:
+        # 로컬 실행 전용 옵션: 브라우저 자동 오픈 + 코드 변경 자동 reload
         subprocess.run([
             sys.executable, "-m", "streamlit", "run", "app.py",
             "--server.port", "8501",
+            "--server.headless=false",
+            "--server.runOnSave=true",
         ], cwd=ROOT)
     except KeyboardInterrupt:
         print("\n👋 대시보드를 종료합니다.")
