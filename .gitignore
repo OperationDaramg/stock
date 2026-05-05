@@ -9,3 +9,4 @@
 !*.md
 !requirements.txt
 !.gitignore
+!.streamlit/config.toml
