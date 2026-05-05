@@ -1,8 +1,8 @@
 # KOSPI 카테고리별 스크리너
 
-코스피 종목을 6개 카테고리로 매일 자동 스크리닝하여 결과를 CSV/요약 텍스트로 저장하는 도구.
+코스피 종목을 6개 카테고리로 매일 자동 스크리닝하고, 섹터별로 분류하며, 웹 대시보드와 백테스팅까지 제공하는 도구.
 
-> 본 결과는 단순 조건 필터링이며 **투자 추천이 아닙니다.** 매수/매도 결정은 본인의 추가 분석과 책임 하에 진행하세요.
+> 본 결과는 단순 조건 필터링/가상 시뮬레이션이며 **투자 추천이 아닙니다.** 매수/매도 결정은 본인의 추가 분석과 책임 하에 진행하세요.
 
 ## 카테고리
 
@@ -15,15 +15,42 @@
 | E | 과매도 반등 | RSI(14) < 30 (단기 낙폭 후 반등 기대) |
 | F | 단기 관심 후보 | 1~4주 보유 가정. 5일 상승 + 거래량 활발 + RSI 정상 |
 
-각 카테고리당 상위 10개 종목을 추출하며, ◎/○/△ 등급 평가가 함께 표시됨.
+각 카테고리당 상위 10개 종목을 추출하며, ◎/○/△ 등급과 섹터 정보가 함께 표시됨.
 
 ## 데이터 소스
 
 - **[FinanceDataReader](https://github.com/financedata-org/FinanceDataReader)**: 코스피 종목 리스트, 시가총액, 거래량, 개별 OHLCV
 - **네이버 금융 시가총액 페이지**: PER, ROE
 - **네이버 금융 배당 페이지**: 배당수익률(DIV), 주당배당금(DPS)
+- **네이버 금융 업종 페이지**: 섹터(업종) 매핑
 
-> KRX(`pykrx`)는 시장 전체 일괄 조회 엔드포인트가 막혀 사용하지 않음.
+## 프로젝트 구조
+
+```
+stock/
+├── kospi_screener.py        ← 스크리닝 메인 진입점
+├── backtest_runner.py       ← 백테스팅 실행 진입점
+├── app.py                   ← Streamlit 웹 대시보드
+├── requirements.txt
+├── README.md
+├── .gitignore
+├── src/                     ← 기능별 모듈
+│   ├── config.py            (상수)
+│   ├── data_loader.py       (FDR + Naver 펀더멘털/배당)
+│   ├── sectors.py           (네이버 업종 매핑)
+│   ├── indicators.py        (RSI, OHLCV)
+│   ├── grading.py           (◎/○/△ 평가)
+│   ├── screeners.py         (A~F 카테고리 함수)
+│   ├── output.py            (CSV/summary 저장)
+│   └── backtest.py          (백테스팅 시뮬레이션)
+└── docs/                    ← 결과 (gitignore로 추적 제외)
+    └── YYYYMMDD/
+        ├── A_가치주.csv ~ F_단기관심.csv
+        ├── Z_섹터요약.csv
+        ├── backtest_summary.csv
+        ├── backtest_D.csv / E.csv / F.csv
+        └── summary.txt
+```
 
 ## 설치
 
@@ -33,30 +60,43 @@ Python 3.10 이상 필요.
 pip install -r requirements.txt
 ```
 
-## 실행
+## 사용법
+
+### 1) 매일 스크리닝
 
 ```powershell
 python kospi_screener.py
 ```
 
-- 자동으로 직전 영업일을 기준일로 사용 (주말/공휴일 보정)
-- 첫 실행 약 3~5분 소요 (시총 상위 200종목 OHLCV 개별 조회)
+- 자동으로 직전 영업일 기준 `docs/YYYYMMDD/` 폴더 생성
+- 6개 카테고리 CSV + 섹터 요약 + summary.txt 저장
+- 첫 실행 약 4~6분 (시총 상위 200종목 OHLCV + 섹터 80여 개)
 
-## 출력 구조
+### 2) 웹 대시보드 (Streamlit)
 
-```
-docs/
-└── YYYYMMDD/                    ← 영업일 기준 자동 생성
-    ├── A_가치주.csv
-    ├── B_배당주.csv
-    ├── C_우량주.csv
-    ├── D_모멘텀.csv
-    ├── E_과매도.csv
-    ├── F_단기관심.csv
-    └── summary.txt              ← 지표 가이드 + 6개 카테고리 통합본
+```powershell
+streamlit run app.py
 ```
 
-`summary.txt` 상단에는 PER, ROE, RSI, 골든크로스, 거래량배수 등 **주요 지표의 한 줄 설명**과 **카테고리별 의미**가 함께 출력되어 초심자도 결과를 해석할 수 있도록 되어 있다.
+- 브라우저에서 자동으로 `http://localhost:8501` 열림
+- 4개 페이지:
+  - **카테고리 결과**: 6개 카테고리 탭, 섹터 필터 드롭다운, Plotly 차트, CSV 다운로드
+  - **섹터 분석**: 섹터별 시총 비중 파이차트, 평균 PER 막대, PER vs ROE 버블
+  - **종목 상세 차트**: 캔들차트 + 이동평균선(MA5/20/60) + 거래량 + RSI(14) + 최근 수익률
+  - **백테스팅 결과**: 카테고리별 평균 수익률/승률, 거래내역, 수익률 분포 히스토그램
+
+### 3) 백테스팅
+
+```powershell
+python backtest_runner.py
+```
+
+- 시총 상위 100종목, 지난 6개월, 매주 신호 체크 → 5일 보유 후 매도 시뮬레이션
+- D/E/F 카테고리(기술적)에 대해 가상 거래 내역 + 통계 산출
+- 결과 파일: `backtest_summary.csv`, `backtest_D.csv`, `backtest_E.csv`, `backtest_F.csv`
+- 약 3~5분 소요
+
+> 펀더멘털 카테고리(A/B/C)는 시점별 PER/ROE/DIV 데이터가 필요하여 백테스팅 대상에서 제외.
 
 ## 주요 지표 요약
 
@@ -71,12 +111,23 @@ docs/
 
 ## 매개변수 (소스 상단)
 
+`src/config.py`:
+
 | 변수 | 기본값 | 의미 |
 |---|---|---|
 | `TOP_N` | 10 | 카테고리당 추출 종목 수 |
 | `MIN_MARKET_CAP_BIL` | 1000 | 시총 1000억원 미만 컷 (소형주 노이즈 방지) |
 | `TECH_UNIVERSE_SIZE` | 200 | 기술적 지표(D/E/F) 계산 대상 — 시총 상위 N개 |
 | `VOL_SURGE_RATIO` | 1.5 | 거래량 급증 기준 (20일 평균 대비) |
+
+`backtest_runner.py`:
+
+| 변수 | 기본값 | 의미 |
+|---|---|---|
+| `BACKTEST_DAYS` | 180 | 백테스팅 기간 (영업일 기준 약 6개월) |
+| `HOLDING_DAYS` | 5 | 신호 발생 후 보유 영업일 (1주) |
+| `REBALANCE_DAYS` | 5 | 신호 체크 주기 (1주) |
+| `UNIVERSE_SIZE` | 100 | 백테스팅 대상 — 시총 상위 N개 |
 
 ## 라이선스 / 면책
 

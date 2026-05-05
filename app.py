@@ -269,6 +269,59 @@ def page_stock_detail(date: str) -> None:
         m4.metric("RSI(14)", f"{rsi.iloc[-1]:.1f}")
 
 
+# ===== 페이지: 백테스팅 결과 =====
+
+def page_backtest(date: str) -> None:
+    st.header(f"🔬 백테스팅 결과 — {date}")
+
+    summary_path = DOCS_DIR / date / "backtest_summary.csv"
+    if not summary_path.exists():
+        st.warning(
+            "백테스팅 결과 파일이 없습니다. 터미널에서 다음을 먼저 실행하세요:\n\n"
+            "```\npython backtest_runner.py\n```"
+        )
+        return
+
+    summary = pd.read_csv(summary_path)
+    st.subheader("📊 카테고리별 요약")
+    st.dataframe(summary, use_container_width=True)
+
+    if "평균수익률(%)" in summary.columns and not summary["평균수익률(%)"].isna().all():
+        fig = px.bar(
+            summary, x="카테고리", y="평균수익률(%)",
+            color="승률(%)", color_continuous_scale="RdYlGn",
+            title="카테고리별 평균 수익률 + 승률",
+            text="평균수익률(%)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("📋 카테고리별 거래 내역")
+    cats = ["D", "E", "F"]
+    cat_titles = {"D": "[D] 모멘텀", "E": "[E] 과매도 반등", "F": "[F] 단기 관심"}
+    tabs = st.tabs([cat_titles[c] for c in cats])
+    for tab, cat in zip(tabs, cats):
+        with tab:
+            f = DOCS_DIR / date / f"backtest_{cat}.csv"
+            if not f.exists():
+                st.info("거래 내역 없음")
+                continue
+            df = pd.read_csv(f)
+            if df.empty:
+                st.info("이 카테고리에서는 신호가 없었습니다.")
+                continue
+            st.dataframe(df, use_container_width=True, height=400)
+            fig = px.histogram(
+                df, x="수익률(%)", nbins=30,
+                title=f"{cat_titles[cat]} 수익률 분포 (거래 {len(df)}건)",
+            )
+            fig.add_vline(x=0, line_dash="dash", line_color="red")
+            fig.add_vline(
+                x=df["수익률(%)"].mean(), line_dash="dot",
+                line_color="blue", annotation_text=f"평균 {df['수익률(%)'].mean():.2f}%",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+
 # ===== 메인 =====
 
 def main() -> None:
@@ -289,6 +342,7 @@ def main() -> None:
             "카테고리 결과",
             "섹터 분석",
             "종목 상세 차트",
+            "백테스팅 결과",
         ])
 
         st.markdown("---")
@@ -309,8 +363,10 @@ def main() -> None:
         page_categories(selected_date)
     elif page == "섹터 분석":
         page_sectors(selected_date)
-    else:
+    elif page == "종목 상세 차트":
         page_stock_detail(selected_date)
+    else:
+        page_backtest(selected_date)
 
 
 if __name__ == "__main__":
