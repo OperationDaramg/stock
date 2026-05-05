@@ -17,6 +17,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.macro import COMMODITIES, CURRENCIES, INDICES, load_series, market_sentiment, summary_table
+from src.news import fetch_economic_headlines
+
 
 st.set_page_config(
     page_title="KOSPI 스크리너",
@@ -627,6 +630,206 @@ def page_backtest(date: str) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
+# ===== 페이지: 글로벌 동향 =====
+
+@st.cache_data(ttl=600)
+def _macro_summary_cached(target: str) -> pd.DataFrame:
+    if target == "indices":
+        return summary_table(INDICES)
+    if target == "currencies":
+        return summary_table(CURRENCIES)
+    if target == "commodities":
+        return summary_table(COMMODITIES)
+    return pd.DataFrame()
+
+
+@st.cache_data(ttl=600)
+def _series_cached(symbol: str, days: int) -> pd.DataFrame:
+    return load_series(symbol, days)
+
+
+@st.cache_data(ttl=300)
+def _news_cached() -> pd.DataFrame:
+    return fetch_economic_headlines(30)
+
+
+def page_global() -> None:
+    section_header("글로벌 동향", "🌍")
+
+    # ---- 시장 분위기 판정 ----
+    indices_df = _macro_summary_cached("indices")
+
+    vix_level = None
+    kospi_20d = None
+    sp500_20d = None
+    if not indices_df.empty:
+        vix_row = indices_df[indices_df["심볼"] == "VIX"]
+        if not vix_row.empty:
+            vix_level = float(vix_row["현재값"].iloc[0])
+        kospi_row = indices_df[indices_df["심볼"] == "KS11"]
+        if not kospi_row.empty and "20일(%)" in kospi_row.columns:
+            v = kospi_row["20일(%)"].iloc[0]
+            kospi_20d = float(v) if pd.notna(v) else None
+        sp_row = indices_df[indices_df["심볼"] == "US500"]
+        if not sp_row.empty and "20일(%)" in sp_row.columns:
+            v = sp_row["20일(%)"].iloc[0]
+            sp500_20d = float(v) if pd.notna(v) else None
+
+    label, reasons, score = market_sentiment(vix_level, kospi_20d, sp500_20d)
+
+    st.markdown(
+        f'<div style="padding:18px 22px; border-radius:14px; '
+        f'background:linear-gradient(135deg, rgba(168,85,247,0.10), rgba(26,27,46,0.6)); '
+        f'border:1px solid rgba(168,85,247,0.25); margin-bottom:16px">'
+        f'<div style="font-size:0.85rem; color:#9CA3AF; margin-bottom:6px">시장 분위기 (룰 기반 판정)</div>'
+        f'<div style="font-size:1.6rem; font-weight:800; color:#F3F4F6">{label}</div>'
+        f'<div style="font-size:0.9rem; color:#9CA3AF; margin-top:6px">{reasons}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ---- 주요 지수 변동률 표 ----
+    st.subheader("📊 주요 지수")
+    if indices_df.empty:
+        st.info("지수 데이터 로딩 실패")
+    else:
+        st.dataframe(indices_df, use_container_width=True, height=320)
+
+        # 차트: 코스피/S&P500/나스닥 정규화 비교
+        st.subheader("주요 지수 추이 (90일, 시작=100)")
+        compare_syms = ["KS11", "US500", "IXIC", "JP225"]
+        fig = go.Figure()
+        for sym in compare_syms:
+            try:
+                s = _series_cached(sym, 120)
+                if s.empty:
+                    continue
+                norm = s["Close"] / s["Close"].iloc[0] * 100
+                fig.add_trace(go.Scatter(
+                    x=s.index, y=norm, name=INDICES.get(sym, sym),
+                    line=dict(width=1.8),
+                ))
+            except Exception:
+                continue
+        fig.update_layout(
+            template=PLOTLY_TEMPLATE,
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            font_color="#E5E7EB", height=380, margin=dict(l=10, r=10, t=20, b=10),
+            yaxis_title="시작일=100 기준",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # VIX 별도 차트
+        try:
+            vix = _series_cached("VIX", 180)
+            if not vix.empty:
+                fig_v = go.Figure()
+                fig_v.add_trace(go.Scatter(
+                    x=vix.index, y=vix["Close"], name="VIX",
+                    line=dict(color="#EF4444", width=1.8),
+                    fill="tozeroy", fillcolor="rgba(239,68,68,0.10)",
+                ))
+                fig_v.add_hline(y=20, line_dash="dash", line_color="#FBBF24",
+                                annotation_text="20 (경계)")
+                fig_v.add_hline(y=30, line_dash="dash", line_color="#EF4444",
+                                annotation_text="30 (위험)")
+                fig_v.update_layout(
+                    title="<b>VIX (공포지수) - 180일</b>",
+                    template=PLOTLY_TEMPLATE,
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font_color="#E5E7EB", height=320, margin=dict(l=10, r=10, t=50, b=10),
+                )
+                st.plotly_chart(fig_v, use_container_width=True)
+        except Exception:
+            pass
+
+    st.markdown("---")
+
+    # ---- 환율 ----
+    st.subheader("💱 환율")
+    fx_df = _macro_summary_cached("currencies")
+    col_t, col_c = st.columns([1, 2])
+    with col_t:
+        if not fx_df.empty:
+            st.dataframe(fx_df, use_container_width=True, height=200)
+    with col_c:
+        try:
+            usd = _series_cached("USD/KRW", 180)
+            if not usd.empty:
+                fig = go.Figure(go.Scatter(
+                    x=usd.index, y=usd["Close"], name="USD/KRW",
+                    line=dict(color=ACCENT_COLOR_2, width=1.8),
+                ))
+                fig.update_layout(
+                    title="<b>원/달러 환율 - 180일</b>",
+                    template=PLOTLY_TEMPLATE,
+                    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                    font_color="#E5E7EB", height=300, margin=dict(l=10, r=10, t=50, b=10),
+                )
+                st.plotly_chart(fig, use_container_width=True)
+        except Exception:
+            pass
+
+    st.markdown("---")
+
+    # ---- 원자재 ----
+    st.subheader("🛢️ 원자재")
+    cm_df = _macro_summary_cached("commodities")
+    col_t2, col_c2 = st.columns([1, 2])
+    with col_t2:
+        if not cm_df.empty:
+            st.dataframe(cm_df, use_container_width=True, height=200)
+    with col_c2:
+        try:
+            wti = _series_cached("CL=F", 180)
+            gold = _series_cached("GC=F", 180)
+            fig = go.Figure()
+            if not wti.empty:
+                fig.add_trace(go.Scatter(
+                    x=wti.index, y=wti["Close"] / wti["Close"].iloc[0] * 100,
+                    name="WTI 원유", line=dict(color="#FBBF24", width=1.8),
+                ))
+            if not gold.empty:
+                fig.add_trace(go.Scatter(
+                    x=gold.index, y=gold["Close"] / gold["Close"].iloc[0] * 100,
+                    name="금", line=dict(color="#A855F7", width=1.8),
+                ))
+            fig.update_layout(
+                title="<b>원자재 추이 (180일, 시작=100)</b>",
+                template=PLOTLY_TEMPLATE,
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                font_color="#E5E7EB", height=300, margin=dict(l=10, r=10, t=50, b=10),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception:
+            pass
+
+    st.markdown("---")
+
+    # ---- 경제 뉴스 헤드라인 ----
+    st.subheader("📰 경제 뉴스 헤드라인 (네이버 금융)")
+    news_df = _news_cached()
+    if news_df.empty:
+        st.info("뉴스 로딩 실패")
+    else:
+        for _, row in news_df.head(20).iterrows():
+            title = row.get("제목", "")
+            url = row.get("URL", "")
+            press = row.get("출처", "")
+            summary = row.get("요약", "")
+            press_html = f"<span style='color:#9CA3AF; font-size:0.8rem'> · {press}</span>" if press else ""
+            summary_html = f"<div style='color:#9CA3AF; font-size:0.85rem; margin-top:2px'>{summary}</div>" if summary else ""
+            st.markdown(
+                f'<div style="padding:10px 14px; margin:6px 0; border-radius:10px; '
+                f'background:rgba(26,27,46,0.5); border-left:3px solid #A855F7">'
+                f'<a href="{url}" target="_blank" style="color:#E5E7EB; text-decoration:none; font-weight:600">{title}</a>'
+                f'{press_html}{summary_html}</div>',
+                unsafe_allow_html=True,
+            )
+
+    st.caption("※ 뉴스는 네이버 금융 메인 뉴스 페이지에서 실시간 스크래핑하며 5분 캐시됩니다.")
+
+
 # ===== 페이지: 가이드 (지표 + 면책) =====
 
 def page_guide() -> None:
@@ -936,10 +1139,11 @@ def main() -> None:
     render_kpi_dashboard(selected_date)
     st.markdown("")
 
-    # 상단 메인 탭 5개 (페이지 네비게이션)
+    # 상단 메인 탭 6개 (페이지 네비게이션)
     tabs = st.tabs([
         "📊 카테고리 결과",
         "🏭 섹터 분석",
+        "🌍 글로벌 동향",
         "🔍 종목 상세 차트",
         "🔬 백테스팅 결과",
         "📖 가이드",
@@ -950,10 +1154,12 @@ def main() -> None:
     with tabs[1]:
         page_sectors(selected_date)
     with tabs[2]:
-        page_stock_detail(selected_date)
+        page_global()
     with tabs[3]:
-        page_backtest(selected_date)
+        page_stock_detail(selected_date)
     with tabs[4]:
+        page_backtest(selected_date)
+    with tabs[5]:
         page_guide()
 
 
