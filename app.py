@@ -318,7 +318,11 @@ def render_kpi_dashboard(date: str) -> None:
     avg_per = a["PER"].mean() if not a.empty and "PER" in a.columns else None
     avg_roe = a["ROE"].mean() if not a.empty and "ROE" in a.columns else None
 
-    label, _, _ = _market_state_cached()
+    # 시장 분위기는 외부 API 호출이 무거우므로 실패해도 KPI 자체는 표시
+    try:
+        label, _, _ = _market_state_cached()
+    except Exception:
+        label = "🟡 로딩 중"
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("🌡️ 시장 분위기", label.replace("🟢", "").replace("🟡", "").replace("🟠", "").replace("🔴", "").strip(),
@@ -793,13 +797,14 @@ def _news_cached() -> pd.DataFrame:
     return fetch_economic_headlines(30)
 
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner=False)
 def _market_state_cached() -> tuple[str, str, int]:
-    """시장 분위기 (라벨, 이유, 점수). 10분 캐시."""
+    """시장 분위기 (라벨, 이유, 점수). 10분 캐시. 실패 시 중립 반환."""
     try:
         return fetch_market_state()
     except Exception as e:
-        return ("🟡 데이터 부족", str(e)[:80], 0)
+        # 외부 API 실패해도 앱이 죽지 않도록 안전 fallback
+        return ("🟡 시장 데이터 로딩 중", "글로벌 지수 일시 미확보", 0)
 
 
 def page_global() -> None:
